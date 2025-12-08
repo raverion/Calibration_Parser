@@ -3,6 +3,7 @@ import webbrowser
 import tkinter as tk
 from tkinter import filedialog
 from pathlib import Path
+from datetime import datetime
 
 import pandas as pd
 import numpy as np
@@ -44,6 +45,14 @@ def process_files(input_dir='.', user_inputs=None, unit='V', measurement_type_se
         return
     
     print(f"Found {len(csv_files)} CSV files and {len(txt_files)} TXT files")
+    
+    # Get timestamp of the first data file (for report header)
+    all_data_files = csv_files + txt_files
+    if all_data_files:
+        first_file = min(all_data_files, key=lambda f: f.stat().st_mtime)
+        data_file_timestamp = datetime.fromtimestamp(first_file.stat().st_mtime)
+    else:
+        data_file_timestamp = None
     
     # Process CSV files (output data)
     for csv_file in csv_files:
@@ -264,7 +273,7 @@ def process_files(input_dir='.', user_inputs=None, unit='V', measurement_type_se
             apply_channel_colors_to_results(output_file, df_results, unit, color_assignments)
         
         # Generate interactive HTML report
-        html_file = create_html_report(output_file, df_results, unit)
+        html_file = create_html_report(output_file, df_results, unit, data_file_timestamp)
     else:
         html_file = None
     
