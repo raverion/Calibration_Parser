@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Coming Soon - Measurement Data Analyzer{% endblock %}
+
+{% block content %}
+<div class="coming-soon-page">
+    <div class="coming-soon-icon">🚧</div>
+    <h1>Cross-Equipment Comparison</h1>
+    <h2>Coming Soon</h2>
+    <p>This feature is currently under development. It will allow you to compare performance across multiple equipment samples of the same type.</p>
+    
+    <div class="planned-features">
+        <h3>Planned Features:</h3>
+        <ul>
+            <li>Compare multiple equipment samples (e.g., 50910-001, 50910-002, 50910-003)</li>
+            <li>Statistical comparison charts across samples</li>
+            <li>Equipment-to-equipment variance analysis</li>
+            <li>Batch quality assessment and outlier detection</li>
+            <li>Trend analysis across production batches</li>
+        </ul>
+    </div>
+    
+    <div class="action-buttons centered">
+        <a href="{{ url_for('index') }}" class="btn btn-primary">← Back to Home</a>
+    </div>
+</div>
+{% endblock %}

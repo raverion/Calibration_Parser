@@ -1,0 +1,159 @@
+{% extends "base.html" %}
+
+{% block title %}Configure Tests - Measurement Data Analyzer{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>⚙️ Test Configuration</h1>
+    <p>Configure reference values and tolerances for each test point</p>
+</div>
+
+<div class="progress-steps">
+    <div class="step completed">
+        <span class="step-number">✓</span>
+        <span class="step-label">Upload Files</span>
+    </div>
+    <div class="step-connector completed"></div>
+    <div class="step active">
+        <span class="step-number">2</span>
+        <span class="step-label">Configure</span>
+    </div>
+    <div class="step-connector"></div>
+    <div class="step">
+        <span class="step-number">3</span>
+        <span class="step-label">Results</span>
+    </div>
+</div>
+
+<div class="config-summary">
+    <div class="summary-item">
+        <span class="label">Files:</span>
+        <span class="value">{{ files_info.count }} ({{ files_info.csv_count }} CSV, {{ files_info.txt_count }} TXT)</span>
+    </div>
+    <div class="summary-item">
+        <span class="label">Unit:</span>
+        <span class="value">{{ files_info.unit }}</span>
+    </div>
+    <div class="summary-item">
+        <span class="label">Test Points:</span>
+        <span class="value">{{ test_configs|length }}</span>
+    </div>
+</div>
+
+{% if measurement_types %}
+<div class="config-section">
+    <h2>📋 Measurement Type Selection</h2>
+    <p class="section-desc">Some files have multiple measurement types. Select which type to process for each file.</p>
+    
+    <div class="measurement-types-table">
+        <table>
+            <thead>
+                <tr>
+                    <th>File Name</th>
+                    <th>Available Types</th>
+                    <th>Selected Type</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for filename, types in measurement_types.items() %}
+                <tr>
+                    <td class="filename">{{ filename }}</td>
+                    <td class="types-list">{{ types|join(', ') }}</td>
+                    <td>
+                        <select class="measurement-type-select" data-filename="{{ filename }}">
+                            {% for type in types %}
+                            <option value="{{ type }}">{{ type }}</option>
+                            {% endfor %}
+                        </select>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+
+<div class="config-section">
+    <h2>📊 Test Point Configuration</h2>
+    <p class="section-desc">Configure reference value and tolerance for each test value / range / I/O type combination.</p>
+    
+    <div class="config-actions">
+        <button class="btn btn-secondary" onclick="loadConfig()">
+            📂 Load Config
+        </button>
+        <button class="btn btn-secondary" onclick="saveConfig()">
+            💾 Save Config
+        </button>
+        <input type="file" id="config-file-input" accept=".json" hidden>
+    </div>
+    
+    <div class="config-legend">
+        <span class="legend-item input">■ Input (TXT files)</span>
+        <span class="legend-item output">■ Output (CSV files)</span>
+    </div>
+    
+    <div class="config-table-wrapper">
+        <table class="config-table" id="config-table">
+            <thead>
+                <tr>
+                    <th>Test Value</th>
+                    <th>I/O Type</th>
+                    <th>Range Setting</th>
+                    <th>Reference Value</th>
+                    <th>Tolerance (±)</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for config in test_configs %}
+                <tr class="{{ 'input-row' if config.io_type == 'Input' else 'output-row' }}"
+                    data-test-value="{{ config.test_value }}"
+                    data-range-setting="{{ config.range_setting }}"
+                    data-io-type="{{ config.io_type }}">
+                    <td class="test-value">
+                        {% if config.test_value >= 0 %}+{% endif %}{{ "%.4g"|format(config.test_value) }} {{ files_info.unit }}
+                    </td>
+                    <td class="io-type {{ 'input' if config.io_type == 'Input' else 'output' }}">
+                        {{ config.io_type }}
+                    </td>
+                    <td>
+                        <input type="text" class="range-input" value="{{ config.range_setting }}" placeholder="N/A">
+                    </td>
+                    <td>
+                        <input type="number" class="reference-input" value="{{ config.reference }}" step="any">
+                        <span class="unit-label">{{ files_info.unit }}</span>
+                    </td>
+                    <td>
+                        <input type="number" class="tolerance-input" value="{{ config.tolerance }}" step="any" min="0">
+                        <span class="unit-label">{{ files_info.unit }}</span>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="action-buttons">
+    <a href="{{ url_for('equipment_report') }}" class="btn btn-secondary">← Back to Upload</a>
+    <button class="btn btn-primary" onclick="processFiles()" id="process-btn">
+        Process Files →
+    </button>
+</div>
+
+<div class="loading-overlay" id="loading-overlay" style="display: none;">
+    <div class="spinner"></div>
+    <p id="loading-message">Processing files...</p>
+</div>
+
+<!-- Hidden data for JavaScript -->
+<script>
+    const filesInfo = {{ files_info|tojson }};
+    const measurementTypes = {{ measurement_types|tojson }};
+    const testConfigs = {{ test_configs|tojson }};
+</script>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/configure.js') }}"></script>
+{% endblock %}

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Results - Measurement Data Analyzer{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>✅ Report Generated Successfully</h1>
+    <p>Your measurement analysis is complete. Download or view your reports below.</p>
+</div>
+
+<div class="progress-steps">
+    <div class="step completed">
+        <span class="step-number">✓</span>
+        <span class="step-label">Upload Files</span>
+    </div>
+    <div class="step-connector completed"></div>
+    <div class="step completed">
+        <span class="step-number">✓</span>
+        <span class="step-label">Configure</span>
+    </div>
+    <div class="step-connector completed"></div>
+    <div class="step active completed">
+        <span class="step-number">✓</span>
+        <span class="step-label">Results</span>
+    </div>
+</div>
+
+<div class="results-section">
+    <div class="result-cards">
+        {% if output_files.excel %}
+        <div class="result-card">
+            <div class="card-icon">📊</div>
+            <h3>Excel Report</h3>
+            <p>Complete data with tolerance charts and color-coded results</p>
+            <div class="file-name">{{ output_files.excel }}</div>
+            <a href="{{ url_for('download_file', filename=output_files.excel) }}" class="btn btn-primary">
+                ⬇️ Download Excel
+            </a>
+        </div>
+        {% endif %}
+        
+        {% if output_files.html %}
+        <div class="result-card">
+            <div class="card-icon">🌐</div>
+            <h3>Interactive HTML Report</h3>
+            <p>Interactive charts with zoom, pan, and filtering capabilities</p>
+            <div class="file-name">{{ output_files.html }}</div>
+            <div class="card-actions">
+                <a href="{{ url_for('view_file', filename=output_files.html) }}" class="btn btn-primary" target="_blank">
+                    👁️ View Report
+                </a>
+                <a href="{{ url_for('download_file', filename=output_files.html) }}" class="btn btn-secondary">
+                    ⬇️ Download
+                </a>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if output_files.html %}
+<div class="preview-section">
+    <h2>Report Preview</h2>
+    <div class="preview-frame-container">
+        <iframe src="{{ url_for('view_file', filename=output_files.html) }}" class="preview-frame"></iframe>
+    </div>
+</div>
+{% endif %}
+
+<div class="action-buttons">
+    <a href="{{ url_for('equipment_report') }}" class="btn btn-secondary">
+        ← Process New Files
+    </a>
+    <a href="{{ url_for('index') }}" class="btn btn-primary">
+        🏠 Home
+    </a>
+</div>
+{% endblock %}

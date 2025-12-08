@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+
+{% block title %}Measurement Data Analyzer - Home{% endblock %}
+
+{% block content %}
+<div class="hero">
+    <h1>📊 Measurement Data Analyzer</h1>
+    <p class="subtitle">Compile measurement data into Excel reports with tolerance charts and interactive HTML reports</p>
+</div>
+
+<div class="mode-selection">
+    <h2>Select Report Type</h2>
+    <div class="mode-cards">
+        <a href="{{ url_for('equipment_report') }}" class="mode-card active">
+            <div class="mode-icon">🔧</div>
+            <h3>Equipment-Specific Report</h3>
+            <p>Create detailed reports for individual equipment samples. Analyze multiple channels, compare with tolerances, and generate interactive visualizations.</p>
+            <ul class="feature-list">
+                <li>✓ Process CSV and TXT measurement files</li>
+                <li>✓ Multi-channel tolerance charts</li>
+                <li>✓ PASS/FAIL analysis (Mean & ±2σ)</li>
+                <li>✓ Excel + Interactive HTML reports</li>
+            </ul>
+            <span class="mode-status available">Available</span>
+        </a>
+        
+        <div class="mode-card disabled">
+            <div class="mode-icon">📈</div>
+            <h3>Cross-Equipment Comparison</h3>
+            <p>Compare performance across multiple equipment samples of the same type. Visualize variations and identify outliers.</p>
+            <ul class="feature-list">
+                <li>○ Compare multiple samples (e.g., 50910-001, 50910-002)</li>
+                <li>○ Statistical comparison charts</li>
+                <li>○ Equipment-to-equipment variance analysis</li>
+                <li>○ Batch quality assessment</li>
+            </ul>
+            <span class="mode-status coming-soon">Coming Soon</span>
+        </div>
+    </div>
+</div>
+
+<div class="info-section">
+    <h2>Supported File Formats</h2>
+    <div class="format-cards">
+        <div class="format-card">
+            <h4>CSV Files (Output Data)</h4>
+            <p>Power supply output measurements with columns for voltage, current, or resistance readings.</p>
+            <code>VT2816A_m2V5_R10V_CH3.csv</code>
+        </div>
+        <div class="format-card">
+            <h4>TXT Files (Input Data)</h4>
+            <p>Voltmeter or other input device readings in hierarchical or flat format.</p>
+            <code>VT2816A_10V_R10V_1000x.txt</code>
+        </div>
+    </div>
+</div>
+{% endblock %}
