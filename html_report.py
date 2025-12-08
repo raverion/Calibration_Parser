@@ -1,4 +1,5 @@
 from pathlib import Path
+from datetime import datetime
 
 from utils import PLOTLY_AVAILABLE, CHANNEL_COLORS_HEX
 
@@ -6,6 +7,7 @@ if PLOTLY_AVAILABLE:
     import plotly.graph_objects as go
     from plotly.subplots import make_subplots
 
+'''
 def create_tolerance_charts(excel_file, df_results, unit):
     """
     Create tolerance charts showing limits, reference value, mean, and mean±2σ for each 
@@ -260,10 +262,16 @@ def create_tolerance_charts(excel_file, df_results, unit):
     print("✓ Tolerance charts added to workbook")
     
     return color_assignments
-
-def create_html_report(output_file, df_results, unit):
+'''
+def create_html_report(output_file, df_results, unit, data_file_timestamp=None):
     """
     Create an interactive HTML report using Plotly with tolerance charts and data tables.
+    
+    Parameters:
+    - output_file: Path to the output Excel file
+    - df_results: DataFrame with results
+    - unit: Measurement unit
+    - data_file_timestamp: Optional datetime of the first data file (for "Data collected on")
     """
     if not PLOTLY_AVAILABLE:
         print("Warning: Plotly not available. Skipping HTML report generation.")
@@ -498,6 +506,13 @@ def create_html_report(output_file, df_results, unit):
     unique_ranges = sorted(df_results['Range Setting'].unique())
     unique_test_values = sorted(df_results[f'Test Value [{unit}]'].unique())
     unique_io_types = sorted(df_results['I/O Type'].unique())
+    
+    # Generate timestamp information
+    report_generated_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    if data_file_timestamp:
+        data_collected_str = data_file_timestamp.strftime("%Y-%m-%d %H:%M:%S")
+    else:
+        data_collected_str = "Unknown"
     
     # Build HTML document
     html_content = f'''<!DOCTYPE html>
@@ -824,7 +839,7 @@ def create_html_report(output_file, df_results, unit):
 <body>
     <div class="header">
         <h1>📊 Measurement Analysis Report</h1>
-        <p>Generated from: {Path(output_file).stem} | Unit: {unit} | Total Measurements: {len(df_results)}</p>
+        <p>Generated from: {Path(output_file).stem} | Report generated on: {report_generated_str} | Data collected on: {data_collected_str}</p>
     </div>
     
     <div class="container">
