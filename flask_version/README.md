@@ -31,12 +31,27 @@ pip install -r requirements.txt
 
 ## Running the Application
 
-Start the Flask development server:
+### One-Click Launch (Recommended)
+
+**Windows:** Double-click `launch.bat`
+
+**macOS/Linux:** Double-click `launch.py` (or run `./launch.sh` in terminal)
+
+The launcher will:
+1. Check and install any missing dependencies
+2. Start the Flask server
+3. Automatically open your browser to http://localhost:5000
+
+### Manual Launch
+
+If you prefer to run manually:
+
 ```bash
+pip install -r requirements.txt
 python app.py
 ```
 
-The application will be available at `http://localhost:5000`
+Then open http://localhost:5000 in your browser.
 
 ## Usage
 
