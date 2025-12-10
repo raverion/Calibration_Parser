@@ -98,6 +98,7 @@ def upload_comparison_files():
     session_folder = get_session_folder()
     comparison_folder = session_folder / 'comparison'
     comparison_folder.mkdir(exist_ok=True)
+    #equipment_name = files[0].filename[0:-3]
     
     # Clear previous comparison uploads
     for old_file in comparison_folder.iterdir():
@@ -536,7 +537,10 @@ def generate_comparison_html(charts_data, unit, legend_items, group_colors, file
             group_start = pos
             for item in group_info['items']:
                 x_positions.append(pos)
-                x_labels.append(item['label'][0:-2])  # Just channel number or sample ID
+                if group_by == 'sample':
+                    x_labels.append(item['label'])  # equipment number (xxxxx-xxx)
+                else:
+                    x_labels.append(item['label'][0:-3])  # channel number (CHx)
                 pos += 1
             group_boundaries.append({
                 'start': group_start, 
@@ -881,7 +885,7 @@ def generate_comparison_html(charts_data, unit, legend_items, group_colors, file
 <body>
     <div class="header">
         <h1>📊 Cross-Equipment Comparison Report</h1>
-        <p>Comparing {len(sample_ids)} samples of EQ-{x_labels[0][0:5]} | Generated: {report_generated_str}</p>
+        <p>Comparing {len(sample_ids)} samples of EQ-{x_labels[0][0:-3]} | Generated: {report_generated_str}</p>
     </div>
     
     <div class="container">
@@ -894,7 +898,7 @@ def generate_comparison_html(charts_data, unit, legend_items, group_colors, file
         </div>
         
         <div class="summary-section">
-            <h2>🔖 {legend_title}</h2>
+            <h2> {legend_title}</h2>
             <div class="sample-legend">
                 {legend_html}
             </div>
