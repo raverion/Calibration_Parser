@@ -536,7 +536,7 @@ def generate_comparison_html(charts_data, unit, legend_items, group_colors, file
             group_start = pos
             for item in group_info['items']:
                 x_positions.append(pos)
-                x_labels.append(item['label'])  # Just channel number or sample ID
+                x_labels.append(item['label'][0:-2])  # Just channel number or sample ID
                 pos += 1
             group_boundaries.append({
                 'start': group_start, 
@@ -881,7 +881,7 @@ def generate_comparison_html(charts_data, unit, legend_items, group_colors, file
 <body>
     <div class="header">
         <h1>📊 Cross-Equipment Comparison Report</h1>
-        <p>Comparing {len(sample_ids)} equipment samples | Generated: {report_generated_str}</p>
+        <p>Comparing {len(sample_ids)} samples of EQ-{x_labels[0][0:5]} | Generated: {report_generated_str}</p>
     </div>
     
     <div class="container">
