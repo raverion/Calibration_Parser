@@ -50,6 +50,21 @@
     <h2>📊 Comparison Settings</h2>
     
     <div class="config-group">
+        <label class="config-label">Data Grouping</label>
+        <p class="config-desc">Select how to group the data in the charts</p>
+        <div class="radio-group">
+            <label class="radio-option">
+                <input type="radio" name="group_by" value="sample" checked>
+                <span><strong>Group by Equipment Sample</strong> — Channels from the same sample are grouped together (X-axis: Channel numbers)</span>
+            </label>
+            <label class="radio-option">
+                <input type="radio" name="group_by" value="channel">
+                <span><strong>Group by Channel</strong> — Same channel from different samples are grouped together (X-axis: Equipment numbers)</span>
+            </label>
+        </div>
+    </div>
+    
+    <div class="config-group">
         <label class="config-label">I/O Type Filter</label>
         <p class="config-desc">Select which I/O type to include in the comparison</p>
         <div class="radio-group">
@@ -115,6 +130,7 @@
 function generateReport() {
     const loadingOverlay = document.getElementById('loading-overlay');
     
+    const groupBy = document.querySelector('input[name="group_by"]:checked').value;
     const ioType = document.querySelector('input[name="io_type"]:checked').value;
     const channels = document.querySelector('input[name="channels"]:checked').value;
     
@@ -126,6 +142,7 @@ function generateReport() {
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
+            group_by: groupBy,
             io_type: ioType,
             channels: channels
         })

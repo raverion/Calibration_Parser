@@ -287,6 +287,7 @@ def process_comparison():
     data = request.json
     selected_channels = data.get('channels', 'all')  # 'all', 'mean', or list of channel numbers
     selected_io_type = data.get('io_type', 'all')  # 'all', 'Input', or 'Output'
+    group_by = data.get('group_by', 'sample')  # 'sample' or 'channel'
     
     session_folder = get_session_folder()
     comparison_folder = session_folder / 'comparison'
@@ -335,7 +336,8 @@ def process_comparison():
             unit, 
             output_folder,
             selected_channels,
-            session['comparison_files']
+            session['comparison_files'],
+            group_by
         )
         
         session['comparison_output'] = {
@@ -352,7 +354,7 @@ def process_comparison():
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
 
-def create_comparison_html_report(df, unit, output_folder, selected_channels, files_info):
+def create_comparison_html_report(df, unit, output_folder, selected_channels, files_info, group_by='sample'):
     """
     Create an interactive HTML report for cross-equipment comparison.
     
@@ -362,6 +364,7 @@ def create_comparison_html_report(df, unit, output_folder, selected_channels, fi
     - output_folder: Output directory
     - selected_channels: 'all', 'mean', or list of channel numbers
     - files_info: List of file info dicts
+    - group_by: 'sample' (group by equipment sample) or 'channel' (group by channel number)
     """
     from utils import CHANNEL_COLORS_HEX
     
@@ -373,11 +376,19 @@ def create_comparison_html_report(df, unit, output_folder, selected_channels, fi
     unique_combinations = df.groupby([f'Test Value [{unit}]', 'Range Setting', 'I/O Type']).size().reset_index()
     unique_combinations = unique_combinations.sort_values([f'Test Value [{unit}]', 'Range Setting', 'I/O Type'])
     
-    # Get unique samples in order
+    # Get unique samples and channels
     sample_ids = df['Sample ID'].unique().tolist()
+    channel_ids = sorted(df['Channel'].unique().tolist())
     
-    # Assign colors to samples
-    sample_colors = {sample: CHANNEL_COLORS_HEX[i % len(CHANNEL_COLORS_HEX)] for i, sample in enumerate(sample_ids)}
+    # Assign colors based on grouping mode
+    if group_by == 'sample':
+        # Colors represent equipment samples
+        group_colors = {sample: CHANNEL_COLORS_HEX[i % len(CHANNEL_COLORS_HEX)] for i, sample in enumerate(sample_ids)}
+        legend_items = sample_ids
+    else:
+        # Colors represent channels
+        group_colors = {ch: CHANNEL_COLORS_HEX[i % len(CHANNEL_COLORS_HEX)] for i, ch in enumerate(channel_ids)}
+        legend_items = [f"CH{ch}" for ch in channel_ids]
     
     # Build chart data for each combination
     charts_data = []
@@ -403,50 +414,74 @@ def create_comparison_html_report(df, unit, output_folder, selected_channels, fi
         range_display = f", Range: {range_setting}" if range_setting != 'N/A' else ""
         chart_title = f"Test: {test_value} {unit}{range_display} ({io_type})"
         
-        # Prepare data for chart
+        # Prepare data for chart based on grouping mode
         chart_info = {
             'title': chart_title,
             'test_value': test_value,
             'range_setting': range_setting,
             'io_type': io_type,
             'tolerance': tolerance,
-            'samples': []
+            'group_by': group_by,
+            'groups': []
         }
         
-        for sample_id in sample_ids:
-            sample_data = chart_data[chart_data['Sample ID'] == sample_id]
-            if len(sample_data) == 0:
-                continue
-            
-            channels_data = []
-            for _, row in sample_data.iterrows():
-                channels_data.append({
-                    'channel': int(row['Channel']),
-                    'error': row['Error'],
-                    'error_minus_2sigma': row['Error-2σ'],
-                    'error_plus_2sigma': row['Error+2σ'],
-                    'mean_check': row['Mean Check'],
-                    'sigma_check': row['Mean±2σ Check']
+        if group_by == 'sample':
+            # Group by equipment sample (original behavior)
+            for sample_id in sample_ids:
+                sample_data = chart_data[chart_data['Sample ID'] == sample_id]
+                if len(sample_data) == 0:
+                    continue
+                
+                items_data = []
+                for _, row in sample_data.iterrows():
+                    items_data.append({
+                        'label': f"CH{int(row['Channel'])}",
+                        'channel': int(row['Channel']),
+                        'sample_id': sample_id,
+                        'error': row['Error'],
+                        'error_minus_2sigma': row['Error-2σ'],
+                        'error_plus_2sigma': row['Error+2σ'],
+                        'mean_check': row['Mean Check'],
+                        'sigma_check': row['Mean±2σ Check']
+                    })
+                
+                chart_info['groups'].append({
+                    'group_id': sample_id,
+                    'group_label': sample_id,
+                    'color': group_colors[sample_id],
+                    'items': items_data
                 })
-            
-            # Calculate mean of all channels for this sample
-            mean_error = sample_data['Error'].mean()
-            mean_error_minus_2sigma = sample_data['Error-2σ'].mean()
-            mean_error_plus_2sigma = sample_data['Error+2σ'].mean()
-            
-            chart_info['samples'].append({
-                'sample_id': sample_id,
-                'color': sample_colors[sample_id],
-                'channels': channels_data,
-                'mean_error': mean_error,
-                'mean_error_minus_2sigma': mean_error_minus_2sigma,
-                'mean_error_plus_2sigma': mean_error_plus_2sigma
-            })
+        else:
+            # Group by channel number
+            for channel_id in channel_ids:
+                channel_data = chart_data[chart_data['Channel'] == channel_id]
+                if len(channel_data) == 0:
+                    continue
+                
+                items_data = []
+                for _, row in channel_data.iterrows():
+                    items_data.append({
+                        'label': row['Sample ID'],
+                        'channel': int(row['Channel']),
+                        'sample_id': row['Sample ID'],
+                        'error': row['Error'],
+                        'error_minus_2sigma': row['Error-2σ'],
+                        'error_plus_2sigma': row['Error+2σ'],
+                        'mean_check': row['Mean Check'],
+                        'sigma_check': row['Mean±2σ Check']
+                    })
+                
+                chart_info['groups'].append({
+                    'group_id': channel_id,
+                    'group_label': f"CH{channel_id}",
+                    'color': group_colors[channel_id],
+                    'items': items_data
+                })
         
         charts_data.append(chart_info)
     
     # Generate HTML
-    html_content = generate_comparison_html(charts_data, unit, sample_ids, sample_colors, files_info)
+    html_content = generate_comparison_html(charts_data, unit, legend_items, group_colors, files_info, group_by, sample_ids, channel_ids)
     
     with open(html_file, 'w', encoding='utf-8') as f:
         f.write(html_content)
@@ -455,16 +490,24 @@ def create_comparison_html_report(df, unit, output_folder, selected_channels, fi
     return html_file
 
 
-def generate_comparison_html(charts_data, unit, sample_ids, sample_colors, files_info):
+def generate_comparison_html(charts_data, unit, legend_items, group_colors, files_info, group_by, sample_ids, channel_ids):
     """Generate the HTML content for the comparison report."""
     
     report_generated_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    # Build sample legend HTML
-    sample_legend_html = ''.join([
-        f'<div class="legend-item"><span class="legend-color" style="background:{sample_colors[s]}"></span>{s}</div>'
-        for s in sample_ids
-    ])
+    # Build legend HTML based on grouping mode
+    if group_by == 'sample':
+        legend_title = "Equipment Samples"
+        legend_html = ''.join([
+            f'<div class="legend-item"><span class="legend-color" style="background:{group_colors[s]}"></span>{s}</div>'
+            for s in sample_ids
+        ])
+    else:
+        legend_title = "Channels"
+        legend_html = ''.join([
+            f'<div class="legend-item"><span class="legend-color" style="background:{group_colors[ch]}"></span>CH{ch}</div>'
+            for ch in channel_ids
+        ])
     
     # Build charts HTML using Plotly
     charts_html = ""
@@ -483,21 +526,25 @@ def generate_comparison_html(charts_data, unit, sample_ids, sample_colors, files
         # Build Plotly traces
         traces = []
         
-        # Add tolerance limit lines
-        # We need x range based on samples and channels
+        # Build x positions and labels
         x_positions = []
         x_labels = []
         pos = 0
-        sample_boundaries = []
+        group_boundaries = []
         
-        for sample_info in chart['samples']:
-            sample_start = pos
-            for ch_data in sample_info['channels']:
+        for group_info in chart['groups']:
+            group_start = pos
+            for item in group_info['items']:
                 x_positions.append(pos)
-                x_labels.append(f"{sample_info['sample_id']}<br>CH{ch_data['channel']}")
+                x_labels.append(item['label'])  # Just channel number or sample ID
                 pos += 1
-            sample_boundaries.append({'start': sample_start, 'end': pos - 1, 'sample': sample_info['sample_id']})
-            pos += 0.5  # Gap between samples
+            group_boundaries.append({
+                'start': group_start, 
+                'end': pos - 1, 
+                'group_id': group_info['group_id'],
+                'color': group_info['color']
+            })
+            pos += 0.5  # Gap between groups
         
         x_min = -0.5
         x_max = pos - 0.5
@@ -534,28 +581,29 @@ def generate_comparison_html(charts_data, unit, sample_ids, sample_colors, files
             'hoverinfo': 'name+y'
         })
         
-        # Add data points for each sample
+        # Add data points for each group
         pos = 0
-        for sample_info in chart['samples']:
-            color = sample_info['color']
-            sample_id = sample_info['sample_id']
+        for group_info in chart['groups']:
+            color = group_info['color']
             
-            for ch_data in sample_info['channels']:
+            for item in group_info['items']:
+                hover_text = f"{item['sample_id']} CH{item['channel']}"
+                
                 # Error point (diamond)
                 traces.append({
                     'x': [pos],
-                    'y': [ch_data['error']],
+                    'y': [item['error']],
                     'mode': 'markers',
-                    'name': f"{sample_id} CH{ch_data['channel']}",
+                    'name': hover_text,
                     'marker': {'symbol': 'diamond', 'size': 10, 'color': color},
-                    'hovertemplate': f"{sample_id} CH{ch_data['channel']}<br>Error: %{{y:.6f}}<br>Check: {ch_data['mean_check']}<extra></extra>",
+                    'hovertemplate': f"{hover_text}<br>Error: %{{y:.6f}}<br>Check: {item['mean_check']}<extra></extra>",
                     'showlegend': False
                 })
                 
                 # Error bars (-2σ to +2σ)
                 traces.append({
                     'x': [pos, pos],
-                    'y': [ch_data['error_minus_2sigma'], ch_data['error_plus_2sigma']],
+                    'y': [item['error_minus_2sigma'], item['error_plus_2sigma']],
                     'mode': 'lines',
                     'line': {'color': color, 'width': 1},
                     'showlegend': False,
@@ -565,29 +613,29 @@ def generate_comparison_html(charts_data, unit, sample_ids, sample_colors, files
                 # -2σ marker
                 traces.append({
                     'x': [pos],
-                    'y': [ch_data['error_minus_2sigma']],
+                    'y': [item['error_minus_2sigma']],
                     'mode': 'markers',
                     'marker': {'symbol': 'line-ew', 'size': 8, 'color': color, 'line': {'color': color, 'width': 2}},
-                    'hovertemplate': f"{sample_id} CH{ch_data['channel']}<br>Error-2σ: %{{y:.6f}}<extra></extra>",
+                    'hovertemplate': f"{hover_text}<br>Error-2σ: %{{y:.6f}}<extra></extra>",
                     'showlegend': False
                 })
                 
                 # +2σ marker
                 traces.append({
                     'x': [pos],
-                    'y': [ch_data['error_plus_2sigma']],
+                    'y': [item['error_plus_2sigma']],
                     'mode': 'markers',
                     'marker': {'symbol': 'line-ew', 'size': 8, 'color': color, 'line': {'color': color, 'width': 2}},
-                    'hovertemplate': f"{sample_id} CH{ch_data['channel']}<br>Error+2σ: %{{y:.6f}}<br>±2σ Check: {ch_data['sigma_check']}<extra></extra>",
+                    'hovertemplate': f"{hover_text}<br>Error+2σ: %{{y:.6f}}<br>±2σ Check: {item['sigma_check']}<extra></extra>",
                     'showlegend': False
                 })
                 
                 pos += 1
-            pos += 0.5  # Gap between samples
+            pos += 0.5  # Gap between groups
         
-        # Create shapes for sample grouping backgrounds
+        # Create shapes for group backgrounds
         shapes = []
-        for i, boundary in enumerate(sample_boundaries):
+        for boundary in group_boundaries:
             shapes.append({
                 'type': 'rect',
                 'xref': 'x',
@@ -596,39 +644,76 @@ def generate_comparison_html(charts_data, unit, sample_ids, sample_colors, files
                 'x1': boundary['end'] + 0.4,
                 'y0': 0,
                 'y1': 1,
-                'fillcolor': sample_colors[boundary['sample']],
+                'fillcolor': boundary['color'],
                 'opacity': 0.1,
                 'line': {'width': 0}
             })
+        
+        # X-axis title based on grouping mode
+        if group_by == 'sample':
+            x_axis_title = 'Channel'
+        else:
+            x_axis_title = 'Equipment Sample'
         
         # Convert to JSON for JavaScript
         import json
         traces_json = json.dumps(traces)
         shapes_json = json.dumps(shapes)
         
-        charts_js += f'''
-        Plotly.newPlot('{chart_id}', {traces_json}, {{
-            title: null,
-            xaxis: {{
-                title: 'Equipment Sample / Channel',
-                tickmode: 'array',
-                tickvals: {json.dumps(x_positions)},
-                ticktext: {json.dumps(x_labels)},
-                tickangle: -45
-            }},
-            yaxis: {{
-                title: 'Error from Reference [{unit}]',
-                zeroline: true
-            }},
-            shapes: {shapes_json},
-            showlegend: false,
-            hovermode: 'closest',
-            plot_bgcolor: 'white',
-            paper_bgcolor: 'white',
-            margin: {{l: 60, r: 20, t: 30, b: 100}},
-            autosize: true
-        }}, {{responsive: true}});
-        '''
+        if group_by == 'sample':
+            charts_js += f'''
+            Plotly.newPlot('{chart_id}', {traces_json}, {{
+                title: null,
+                xaxis: {{
+                    title: '{x_axis_title}',
+                    tickmode: 'array',
+                    tickvals: {json.dumps(x_positions)},
+                    ticktext: {json.dumps(x_labels)},
+                }},
+                yaxis: {{
+                    title: 'Error from Reference [{unit}]',
+                    zeroline: true
+                }},
+                shapes: {shapes_json},
+                showlegend: false,
+                hovermode: 'closest',
+                plot_bgcolor: 'white',
+                paper_bgcolor: 'white',
+                margin: {{l: 60, r: 20, t: 30, b: 80}},
+                autosize: true
+            }}, {{responsive: true}});
+            '''
+        else:
+            charts_js += f'''
+            Plotly.newPlot('{chart_id}', {traces_json}, {{
+                title: null,
+                xaxis: {{
+                    title: '{x_axis_title}',
+                    tickmode: 'array',
+                    tickvals: {json.dumps(x_positions)},
+                    ticktext: {json.dumps(x_labels)},
+                    tickangle: -45,
+                    tickfont: {{size: 8}}
+                }},
+                yaxis: {{
+                    title: 'Error from Reference [{unit}]',
+                    zeroline: true
+                }},
+                shapes: {shapes_json},
+                showlegend: false,
+                hovermode: 'closest',
+                plot_bgcolor: 'white',
+                paper_bgcolor: 'white',
+                margin: {{l: 60, r: 20, t: 30, b: 80}},
+                autosize: true
+            }}, {{responsive: true}});
+            '''
+    
+    # Grouping mode description
+    if group_by == 'sample':
+        grouping_desc = "Data is grouped by <strong>equipment sample</strong>. Each color represents a different sample, and channels within each sample are grouped together."
+    else:
+        grouping_desc = "Data is grouped by <strong>channel number</strong>. Each color represents a different channel, and equipment samples within each channel are grouped together."
     
     html = f'''<!DOCTYPE html>
 <html lang="en">
@@ -805,12 +890,13 @@ def generate_comparison_html(charts_data, unit, sample_ids, sample_colors, files
             <p>This report shows the <strong>error from reference value</strong> (normalized data) for each measurement. 
             The Y-axis represents the difference between the measured mean and the reference value. 
             Zero means perfect accuracy. The dashed lines show the ±Tolerance limits.</p>
+            <p style="margin-top: 8px;">{grouping_desc}</p>
         </div>
         
         <div class="summary-section">
-            <h2>🔖 Equipment Samples</h2>
+            <h2>🔖 {legend_title}</h2>
             <div class="sample-legend">
-                {sample_legend_html}
+                {legend_html}
             </div>
         </div>
         
