@@ -55,6 +55,21 @@
             </div>
         </div>
         {% endif %}
+        
+        {% if output_files.html %}
+        <div class="result-card">
+            <div class="card-icon">📄</div>
+            <h3>PDF Report</h3>
+            <p>Static PDF version for printing and sharing</p>
+            <div class="file-name">{{ output_files.html.replace('.html', '.pdf') }}</div>
+            <div class="card-actions">
+                <a href="{{ url_for('generate_pdf', html_filename=output_files.html) }}" class="btn btn-primary" id="pdf-download-btn">
+                    ⬇️ Download PDF
+                </a>
+            </div>
+            <p class="pdf-note">Note: PDF is generated on-demand. Interactive charts will be rendered as static images.</p>
+        </div>
+        {% endif %}
     </div>
 </div>
 

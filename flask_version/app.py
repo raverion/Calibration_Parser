@@ -1415,6 +1415,218 @@ def download_file(filename):
     return send_file(str(file_path), as_attachment=True)
 
 
+@app.route('/generate-pdf/<html_filename>')
+def generate_pdf(html_filename):
+    """Generate PDF from the report by reading data from Excel and creating static charts."""
+    output_folder = get_output_folder()
+    html_path = output_folder / html_filename
+    
+    if not html_path.exists():
+        return jsonify({'error': 'HTML file not found'}), 404
+    
+    try:
+        import plotly.graph_objects as go
+        import plotly.io as pio
+        
+        # Generate PDF filename
+        pdf_filename = html_filename.replace('.html', '.pdf')
+        pdf_path = output_folder / pdf_filename
+        
+        # Find the corresponding Excel file
+        excel_filename = html_filename.replace('.html', '.xlsx')
+        excel_path = output_folder / excel_filename
+        
+        if not excel_path.exists():
+            # Try to find any Excel file in the output folder with similar name
+            base_name = html_filename.replace('_report.html', '').replace('.html', '')
+            possible_excel = list(output_folder.glob(f'{base_name}*.xlsx'))
+            if possible_excel:
+                excel_path = possible_excel[0]
+            else:
+                return jsonify({'error': 'Excel file not found. Cannot generate PDF.'}), 404
+        
+        # Read data from Excel
+        df = pd.read_excel(excel_path, sheet_name='Test Results')
+        
+        # Get unit from column names
+        unit = 'V'
+        for col in df.columns:
+            if 'Test Value [' in col:
+                unit = col.split('[')[1].split(']')[0]
+                break
+        
+        # Handle NaN in Range Setting
+        df['Range Setting'] = df['Range Setting'].fillna('N/A')
+        
+        # Get unique test value + range + I/O type combinations
+        unique_combos = df.groupby([f'Test Value [{unit}]', 'Range Setting', 'I/O Type']).size().reset_index()
+        
+        from utils import CHANNEL_COLORS_HEX
+        
+        # Create figures for each chart
+        figs = []
+        
+        for _, combo in unique_combos.iterrows():
+            test_value = combo[f'Test Value [{unit}]']
+            range_setting = combo['Range Setting']
+            io_type = combo['I/O Type']
+            
+            mask = (
+                (df[f'Test Value [{unit}]'] == test_value) &
+                (df['Range Setting'] == range_setting) &
+                (df['I/O Type'] == io_type)
+            )
+            chart_data = df[mask].sort_values('Channel')
+            
+            if len(chart_data) == 0:
+                continue
+            
+            fig = go.Figure()
+            
+            # Get limits
+            reference = chart_data[f'Reference Value [{unit}]'].iloc[0]
+            tolerance = chart_data[f'Tolerance [{unit}]'].iloc[0]
+            upper_limit = chart_data[f'Upper Limit [{unit}]'].iloc[0]
+            lower_limit = chart_data[f'Lower Limit [{unit}]'].iloc[0]
+            
+            channels = chart_data['Channel'].tolist()
+            x_range = [-0.5, len(channels) - 0.5]
+            
+            # Upper limit
+            fig.add_trace(go.Scatter(
+                x=x_range, y=[upper_limit, upper_limit],
+                mode='lines', name=f'Upper Limit ({upper_limit:.4f})',
+                line=dict(color='#8B0000', width=2, dash='dash')
+            ))
+            
+            # Reference line
+            fig.add_trace(go.Scatter(
+                x=x_range, y=[reference, reference],
+                mode='lines', name=f'Reference ({reference:.4f})',
+                line=dict(color='#2E7D32', width=2)
+            ))
+            
+            # Lower limit
+            fig.add_trace(go.Scatter(
+                x=x_range, y=[lower_limit, lower_limit],
+                mode='lines', name=f'Lower Limit ({lower_limit:.4f})',
+                line=dict(color='#8B0000', width=2, dash='dash')
+            ))
+            
+            # Add channel data
+            x_labels = []
+            for i, (_, row) in enumerate(chart_data.iterrows()):
+                color = CHANNEL_COLORS_HEX[i % len(CHANNEL_COLORS_HEX)]
+                ch = int(row['Channel'])
+                x_labels.append(f'CH{ch}')
+                
+                mean_val = row[f'Mean [{unit}]']
+                std_val = row[f'StdDev [{unit}]']
+                mean_minus_2sigma = mean_val - 2 * std_val
+                mean_plus_2sigma = mean_val + 2 * std_val
+                
+                # Mean marker (diamond)
+                fig.add_trace(go.Scatter(
+                    x=[i], y=[mean_val],
+                    mode='markers',
+                    name=f'CH{ch}',
+                    marker=dict(symbol='diamond', size=12, color=color),
+                    hovertemplate=f'CH{ch}<br>Mean: {mean_val:.6f}<extra></extra>'
+                ))
+                
+                # Error bars (-2σ to +2σ)
+                fig.add_trace(go.Scatter(
+                    x=[i, i], y=[mean_minus_2sigma, mean_plus_2sigma],
+                    mode='lines',
+                    line=dict(color=color, width=2),
+                    showlegend=False,
+                    hoverinfo='skip'
+                ))
+                
+                # Endpoints
+                fig.add_trace(go.Scatter(
+                    x=[i], y=[mean_minus_2sigma],
+                    mode='markers',
+                    marker=dict(symbol='line-ew', size=8, color=color, line=dict(width=2, color=color)),
+                    showlegend=False,
+                    hovertemplate=f'CH{ch}<br>Mean-2σ: {mean_minus_2sigma:.6f}<extra></extra>'
+                ))
+                fig.add_trace(go.Scatter(
+                    x=[i], y=[mean_plus_2sigma],
+                    mode='markers',
+                    marker=dict(symbol='line-ew', size=8, color=color, line=dict(width=2, color=color)),
+                    showlegend=False,
+                    hovertemplate=f'CH{ch}<br>Mean+2σ: {mean_plus_2sigma:.6f}<extra></extra>'
+                ))
+            
+            # Chart title
+            range_display = f", Range: {range_setting}" if range_setting != 'N/A' else ""
+            title = f"Test: {test_value} {unit}{range_display} ({io_type})"
+            
+            fig.update_layout(
+                title=dict(text=title, font=dict(size=14)),
+                xaxis=dict(
+                    title='Channel',
+                    tickmode='array',
+                    tickvals=list(range(len(x_labels))),
+                    ticktext=x_labels
+                ),
+                yaxis=dict(title=f'Value [{unit}]'),
+                showlegend=True,
+                legend=dict(font=dict(size=9)),
+                width=900,
+                height=500,
+                template='plotly_white',
+                margin=dict(l=60, r=150, t=50, b=50)
+            )
+            
+            figs.append(fig)
+        
+        if not figs:
+            return jsonify({'error': 'No charts to generate'}), 400
+        
+        # Export to PDF
+        if len(figs) == 1:
+            figs[0].write_image(str(pdf_path), format='pdf')
+        else:
+            # For multiple charts, combine into single PDF
+            import tempfile
+            try:
+                from pypdf import PdfWriter, PdfReader
+            except ImportError:
+                from PyPDF2 import PdfWriter, PdfReader
+            
+            writer = PdfWriter()
+            temp_files = []
+            
+            for i, fig in enumerate(figs):
+                temp_pdf = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
+                temp_files.append(temp_pdf.name)
+                fig.write_image(temp_pdf.name, format='pdf')
+                temp_pdf.close()
+            
+            # Merge all PDFs
+            for temp_file in temp_files:
+                reader = PdfReader(temp_file)
+                for page in reader.pages:
+                    writer.add_page(page)
+            
+            with open(pdf_path, 'wb') as output:
+                writer.write(output)
+            
+            # Cleanup temp files
+            for temp_file in temp_files:
+                os.unlink(temp_file)
+        
+        return send_file(str(pdf_path), as_attachment=True, download_name=pdf_filename)
+        
+    except ImportError as e:
+        return jsonify({'error': f'PDF generation requires additional packages (kaleido, pypdf). Install with: pip install kaleido pypdf. Error: {str(e)}'}), 500
+    except Exception as e:
+        import traceback
+        return jsonify({'error': f'PDF generation failed: {str(e)}', 'traceback': traceback.format_exc()}), 500
+
+
 @app.route('/view/<filename>')
 def view_file(filename):
     """View HTML report in browser."""

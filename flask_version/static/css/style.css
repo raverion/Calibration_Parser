@@ -755,6 +755,13 @@ body {
     gap: 1rem;
 }
 
+.result-card .pdf-note {
+    font-size: 0.75rem;
+    color: var(--gray-500);
+    margin-top: 0.75rem;
+    font-style: italic;
+}
+
 .preview-section {
     background: white;
     border-radius: var(--border-radius);
