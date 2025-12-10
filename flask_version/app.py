@@ -317,6 +317,9 @@ def process_comparison():
         # Combine all data
         combined_df = pd.concat(all_data, ignore_index=True)
         
+        # Handle NaN values in Range Setting (important for groupby operations)
+        combined_df['Range Setting'] = combined_df['Range Setting'].fillna('N/A')
+        
         # Filter by I/O type if specified
         if selected_io_type != 'all':
             combined_df = combined_df[combined_df['I/O Type'] == selected_io_type]
