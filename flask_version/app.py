@@ -23,7 +23,7 @@ from parsers import (
     parse_text_file,
     extract_equipment_name
 )
-from excel_charts import create_tolerance_charts, apply_channel_colors_to_results
+from excel_charts import create_tolerance_charts, apply_channel_colors_to_results, create_deviation_charts
 from html_report import create_html_report
 from utils import get_versioned_filename
 
@@ -1529,6 +1529,9 @@ def process_measurement_files(input_dir, output_dir, user_inputs, unit, measurem
         if color_assignments:
             apply_channel_colors_to_results(output_file, df_results, unit, color_assignments)
         
+        # Create deviation summary charts in Excel
+        create_deviation_charts(output_file, df_results, unit)
+        
         # Generate interactive HTML report
         html_file = create_html_report(output_file, df_results, unit, data_file_timestamp, equipment_name)
     
@@ -1714,6 +1717,92 @@ def generate_pdf(html_filename):
                     ticktext=x_labels
                 ),
                 yaxis=dict(title=f'Value [{unit}]'),
+                showlegend=True,
+                legend=dict(font=dict(size=9)),
+                width=900,
+                height=500,
+                template='plotly_white',
+                margin=dict(l=60, r=150, t=50, b=50)
+            )
+            
+            figs.append(fig)
+        
+        # Create Deviation Summary Charts for PDF
+        # Get all unique channels for consistent color assignment
+        all_channels = sorted(df['Channel'].unique())
+        channel_color_map = {ch: CHANNEL_COLORS_HEX[i % len(CHANNEL_COLORS_HEX)] for i, ch in enumerate(all_channels)}
+        
+        # Get unique I/O type + Range Setting combinations
+        io_range_combos = df.groupby(['I/O Type', 'Range Setting']).size().reset_index()
+        io_range_combos = io_range_combos.sort_values(['I/O Type', 'Range Setting'])
+        
+        for _, combo in io_range_combos.iterrows():
+            io_type = combo['I/O Type']
+            range_setting = combo['Range Setting']
+            
+            mask = (df['I/O Type'] == io_type) & (df['Range Setting'] == range_setting)
+            combo_data = df[mask].copy()
+            
+            if len(combo_data) == 0:
+                continue
+            
+            channels = sorted(combo_data['Channel'].unique())
+            
+            fig = go.Figure()
+            
+            # Add a line for each channel
+            for channel in channels:
+                ch_data = combo_data[combo_data['Channel'] == channel].copy()
+                ch_data = ch_data.sort_values(f'Test Value [{unit}]')
+                
+                x_vals = ch_data[f'Test Value [{unit}]'].tolist()
+                deviations = (ch_data[f'Mean [{unit}]'] - ch_data[f'Reference Value [{unit}]']).tolist()
+                
+                color = channel_color_map[channel]
+                
+                fig.add_trace(go.Scatter(
+                    x=x_vals,
+                    y=deviations,
+                    mode='lines+markers',
+                    name=f'CH{int(channel)}',
+                    line=dict(color=color, width=2),
+                    marker=dict(color=color, size=8, symbol='diamond')
+                ))
+            
+            # Get tolerance values and add tolerance lines
+            tolerance_data = combo_data.groupby(f'Test Value [{unit}]').first().reset_index()
+            tolerance_data = tolerance_data.sort_values(f'Test Value [{unit}]')
+            
+            tol_x_vals = tolerance_data[f'Test Value [{unit}]'].tolist()
+            tol_upper = tolerance_data[f'Tolerance [{unit}]'].tolist()
+            tol_lower = [-t for t in tol_upper]
+            
+            # Upper tolerance line
+            fig.add_trace(go.Scatter(
+                x=tol_x_vals, y=tol_upper,
+                mode='lines', name='+Tolerance',
+                line=dict(color='#8B0000', width=2, dash='dash')
+            ))
+            
+            # Lower tolerance line
+            fig.add_trace(go.Scatter(
+                x=tol_x_vals, y=tol_lower,
+                mode='lines', name='-Tolerance',
+                line=dict(color='#8B0000', width=2, dash='dash')
+            ))
+            
+            # Zero reference line
+            fig.add_hline(y=0, line=dict(color='#2E7D32', width=2))
+            
+            # Chart title
+            io_label = "Input" if io_type == "Input" else "Output"
+            range_label = f" (Range: {range_setting})" if range_setting and range_setting != 'N/A' else ""
+            title = f"Deviation Summary - {io_label}{range_label}"
+            
+            fig.update_layout(
+                title=dict(text=title, font=dict(size=14)),
+                xaxis=dict(title=f'Test Value [{unit}]'),
+                yaxis=dict(title=f'Deviation [{unit}]'),
                 showlegend=True,
                 legend=dict(font=dict(size=9)),
                 width=900,

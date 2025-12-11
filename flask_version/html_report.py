@@ -560,6 +560,37 @@ def create_html_report(output_file, df_results, unit, data_file_timestamp=None, 
                 customdata=list(zip(means, refs))
             ))
         
+        # Get tolerance values for this combination (should be same for all channels at same test value)
+        # We'll plot tolerance lines at +/- tolerance for each test value
+        tolerance_data = combo_data.groupby(f'Test Value [{unit}]').first().reset_index()
+        tolerance_data = tolerance_data.sort_values(f'Test Value [{unit}]')
+        
+        tol_x_vals = tolerance_data[f'Test Value [{unit}]'].tolist()
+        tol_upper = tolerance_data[f'Tolerance [{unit}]'].tolist()
+        tol_lower = [-t for t in tol_upper]
+        
+        # Add upper tolerance line
+        fig.add_trace(go.Scatter(
+            x=tol_x_vals,
+            y=tol_upper,
+            mode='lines',
+            name='+Tolerance',
+            line=dict(color='#8B0000', width=2, dash='dash'),
+            hovertemplate=f'Upper Tolerance: %{{y:.6f}} {unit}<extra></extra>',
+            showlegend=True
+        ))
+        
+        # Add lower tolerance line
+        fig.add_trace(go.Scatter(
+            x=tol_x_vals,
+            y=tol_lower,
+            mode='lines',
+            name='-Tolerance',
+            line=dict(color='#8B0000', width=2, dash='dash'),
+            hovertemplate=f'Lower Tolerance: %{{y:.6f}} {unit}<extra></extra>',
+            showlegend=True
+        ))
+        
         # Add zero reference line
         fig.add_hline(
             y=0,

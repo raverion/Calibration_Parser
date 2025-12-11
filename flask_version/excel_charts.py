@@ -308,3 +308,151 @@ def create_tolerance_charts(excel_file, df_results, unit):
     print("✓ Tolerance charts added to workbook")
     
     return color_assignments
+
+
+def create_deviation_charts(excel_file, df_results, unit):
+    """
+    Create deviation summary charts showing error (Mean - Reference) for all channels
+    across all test values, grouped by I/O type and Range Setting.
+    """
+    print("\nCreating Deviation charts...")
+    
+    wb = load_workbook(excel_file)
+    
+    if 'Deviation Charts' in wb.sheetnames:
+        del wb['Deviation Charts']
+    chart_sheet = wb.create_sheet('Deviation Charts')
+    
+    # Get all unique channels for consistent color assignment
+    all_channels = sorted(df_results['Channel'].unique())
+    channel_color_map = {ch: CHANNEL_COLORS[i % len(CHANNEL_COLORS)] for i, ch in enumerate(all_channels)}
+    
+    # Get unique I/O type + Range Setting combinations
+    io_range_combos = df_results.groupby(['I/O Type', 'Range Setting']).size().reset_index()
+    io_range_combos = io_range_combos.sort_values(['I/O Type', 'Range Setting'])
+    
+    charts_per_row = 2
+    chart_width = 26
+    chart_height = 36
+    
+    chart_idx = 0
+    
+    for _, combo in io_range_combos.iterrows():
+        io_type = combo['I/O Type']
+        range_setting = combo['Range Setting']
+        
+        mask = (df_results['I/O Type'] == io_type) & (df_results['Range Setting'] == range_setting)
+        combo_data = df_results[mask].copy()
+        
+        if len(combo_data) == 0:
+            continue
+        
+        # Get test values and channels for this combination
+        test_values = sorted(combo_data[f'Test Value [{unit}]'].unique())
+        channels = sorted(combo_data['Channel'].unique())
+        
+        # Calculate chart position
+        row_offset = (chart_idx // charts_per_row) * (chart_height + 5)
+        col_offset = (chart_idx % charts_per_row) * (chart_width + 15)
+        
+        # Create data table for this chart
+        data_start_row = row_offset + 2
+        data_start_col = col_offset + 1
+        
+        # Chart title
+        io_label = "Input" if io_type == "Input" else "Output"
+        range_label = f" (Range: {range_setting})" if range_setting and range_setting != 'N/A' else ""
+        chart_title = f"Deviation Summary - {io_label}{range_label}"
+        
+        # Write title
+        title_cell = chart_sheet.cell(row=row_offset + 1, column=col_offset + 1)
+        title_cell.value = chart_title
+        title_cell.font = Font(bold=True, size=12)
+        
+        # Write headers: Test Value, then channel columns, then +Tolerance, -Tolerance
+        chart_sheet.cell(row=data_start_row, column=data_start_col).value = 'Test Value'
+        for i, ch in enumerate(channels):
+            chart_sheet.cell(row=data_start_row, column=data_start_col + 1 + i).value = f'CH{int(ch)}'
+        tol_col_upper = data_start_col + 1 + len(channels)
+        tol_col_lower = tol_col_upper + 1
+        chart_sheet.cell(row=data_start_row, column=tol_col_upper).value = '+Tolerance'
+        chart_sheet.cell(row=data_start_row, column=tol_col_lower).value = '-Tolerance'
+        
+        # Write data for each test value
+        for row_i, test_val in enumerate(test_values):
+            data_row = data_start_row + 1 + row_i
+            chart_sheet.cell(row=data_row, column=data_start_col).value = test_val
+            
+            # Get tolerance for this test value (from first channel)
+            test_data = combo_data[combo_data[f'Test Value [{unit}]'] == test_val]
+            tolerance = test_data[f'Tolerance [{unit}]'].iloc[0] if len(test_data) > 0 else 0
+            
+            # Write tolerance values
+            chart_sheet.cell(row=data_row, column=tol_col_upper).value = tolerance
+            chart_sheet.cell(row=data_row, column=tol_col_lower).value = -tolerance
+            
+            # Write deviation for each channel
+            for col_i, ch in enumerate(channels):
+                ch_test_data = test_data[test_data['Channel'] == ch]
+                if len(ch_test_data) > 0:
+                    mean_val = ch_test_data[f'Mean [{unit}]'].iloc[0]
+                    ref_val = ch_test_data[f'Reference Value [{unit}]'].iloc[0]
+                    deviation = mean_val - ref_val
+                    chart_sheet.cell(row=data_row, column=data_start_col + 1 + col_i).value = deviation
+        
+        # Create scatter chart
+        chart = ScatterChart()
+        chart.title = None  # Title is above the data
+        chart.style = 2
+        chart.x_axis.title = f'Test Value [{unit}]'
+        chart.y_axis.title = f'Deviation [{unit}]'
+        chart.width = 18
+        chart.height = 12
+        chart.legend.position = 'b'
+        
+        num_test_values = len(test_values)
+        xvalues = Reference(chart_sheet, min_col=data_start_col, min_row=data_start_row + 1, max_row=data_start_row + num_test_values)
+        
+        # Add series for each channel
+        for col_i, ch in enumerate(channels):
+            color = channel_color_map[ch]
+            series = Series(
+                Reference(chart_sheet, min_col=data_start_col + 1 + col_i, min_row=data_start_row + 1, max_row=data_start_row + num_test_values),
+                xvalues,
+                title=f"CH{int(ch)}"
+            )
+            series.marker = Marker('diamond', size=6)
+            series.marker.graphicalProperties = GraphicalProperties(solidFill=color, ln=LineProperties(solidFill=color))
+            series.graphicalProperties = GraphicalProperties(ln=LineProperties(solidFill=color, w=12700))
+            chart.series.append(series)
+        
+        # Add +Tolerance line (dark red, dashed)
+        tol_upper_series = Series(
+            Reference(chart_sheet, min_col=tol_col_upper, min_row=data_start_row + 1, max_row=data_start_row + num_test_values),
+            xvalues,
+            title="+Tolerance"
+        )
+        tol_upper_series.marker = Marker('none')
+        tol_upper_series.graphicalProperties = GraphicalProperties(ln=LineProperties(solidFill="8B0000", w=12700, prstDash='dash'))
+        chart.series.append(tol_upper_series)
+        
+        # Add -Tolerance line (dark red, dashed)
+        tol_lower_series = Series(
+            Reference(chart_sheet, min_col=tol_col_lower, min_row=data_start_row + 1, max_row=data_start_row + num_test_values),
+            xvalues,
+            title="-Tolerance"
+        )
+        tol_lower_series.marker = Marker('none')
+        tol_lower_series.graphicalProperties = GraphicalProperties(ln=LineProperties(solidFill="8B0000", w=12700, prstDash='dash'))
+        chart.series.append(tol_lower_series)
+        
+        # Position chart
+        chart_cell = chart_sheet.cell(row_offset + 4, col_offset + 12)
+        chart.anchor = chart_cell.coordinate
+        chart_sheet.add_chart(chart)
+        
+        print(f"  Created deviation chart: {chart_title}")
+        chart_idx += 1
+    
+    wb.save(excel_file)
+    print("✓ Deviation charts added to workbook")
