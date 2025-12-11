@@ -49,9 +49,17 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Create FormData
         const formData = new FormData();
+        
+        // Collect file timestamps (lastModified is in milliseconds since epoch)
+        const fileTimestamps = {};
         for (let i = 0; i < files.length; i++) {
             formData.append('files', files[i]);
+            // Store the original file modification time
+            fileTimestamps[files[i].name] = files[i].lastModified;
         }
+        
+        // Add timestamps as JSON string
+        formData.append('file_timestamps', JSON.stringify(fileTimestamps));
         
         // Upload files
         fetch('/api/upload', {

@@ -1042,6 +1042,13 @@ def upload_files():
     if not files or all(f.filename == '' for f in files):
         return jsonify({'error': 'No files selected'}), 400
     
+    # Get file timestamps from form data (sent as JSON string)
+    file_timestamps_json = request.form.get('file_timestamps', '{}')
+    try:
+        file_timestamps = json.loads(file_timestamps_json)
+    except json.JSONDecodeError:
+        file_timestamps = {}
+    
     session_folder = get_session_folder()
     
     # Clear previous uploads
@@ -1051,6 +1058,9 @@ def upload_files():
     uploaded_files = []
     csv_count = 0
     txt_count = 0
+    
+    # Store original modification timestamps (milliseconds since epoch from JavaScript)
+    original_timestamps = {}
     
     for file in files:
         if file.filename:
@@ -1066,6 +1076,10 @@ def upload_files():
             file_path = session_folder / filename
             file.save(str(file_path))
             uploaded_files.append(filename)
+            
+            # Store original timestamp if provided (convert from ms to seconds)
+            if file.filename in file_timestamps:
+                original_timestamps[filename] = file_timestamps[file.filename] / 1000.0
     
     if not uploaded_files:
         return jsonify({'error': 'No valid CSV or TXT files found'}), 400
@@ -1095,7 +1109,8 @@ def upload_files():
         'txt_count': txt_count,
         'unit': unit,
         'filenames': uploaded_files,
-        'equipment_model': equipment_model
+        'equipment_model': equipment_model,
+        'original_timestamps': original_timestamps
     }
     session['measurement_types'] = file_measurement_types
     session['test_configs'] = test_configs
@@ -1206,6 +1221,7 @@ def process_files():
         full_path_selections[full_path] = selected_type
     
     unit = session['files_info']['unit']
+    original_timestamps = session['files_info'].get('original_timestamps', {})
     
     try:
         output_file, html_file, equipment_name = process_measurement_files(
@@ -1215,7 +1231,8 @@ def process_files():
             unit=unit,
             measurement_type_selections=full_path_selections,
             equipment_model=equipment_model,
-            equipment_number=equipment_number
+            equipment_number=equipment_number,
+            original_timestamps=original_timestamps
         )
         
         # Store output file paths in session
@@ -1236,11 +1253,15 @@ def process_files():
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
 
-def process_measurement_files(input_dir, output_dir, user_inputs, unit, measurement_type_selections=None, equipment_model=None, equipment_number=None):
+def process_measurement_files(input_dir, output_dir, user_inputs, unit, measurement_type_selections=None, equipment_model=None, equipment_number=None, original_timestamps=None):
     """
     Process all CSV and TXT files in the input directory and compile results into Excel.
     Modified version of the original process_files function to support web output.
     Returns: (output_file, html_file, equipment_name)
+    
+    Parameters:
+    - original_timestamps: dict mapping filename to Unix timestamp (seconds since epoch)
+                          from the original file's lastModified property
     """
     dir_name = Path(input_dir).name
     if not dir_name:
@@ -1279,12 +1300,29 @@ def process_measurement_files(input_dir, output_dir, user_inputs, unit, measurem
     base_output_file = os.path.join(output_dir, f'{output_base_name}.xlsx')
     output_file = get_versioned_filename(base_output_file)
     
-    # Get timestamp of the first data file (for report header)
+    # Get timestamp of the data files (for report header "Data collected on")
+    # Use original file timestamps from browser if available, otherwise fall back to file modification time
+    data_file_timestamp = None
+    
+    if original_timestamps is None:
+        original_timestamps = {}
+    
     if all_data_files:
-        first_file = min(all_data_files, key=lambda f: f.stat().st_mtime)
-        data_file_timestamp = datetime.fromtimestamp(first_file.stat().st_mtime)
-    else:
-        data_file_timestamp = None
+        # Try to use original timestamps from browser (most accurate)
+        if original_timestamps:
+            earliest_timestamp = None
+            for data_file in all_data_files:
+                if data_file.name in original_timestamps:
+                    ts = original_timestamps[data_file.name]
+                    if earliest_timestamp is None or ts < earliest_timestamp:
+                        earliest_timestamp = ts
+            if earliest_timestamp is not None:
+                data_file_timestamp = datetime.fromtimestamp(earliest_timestamp)
+        
+        # Fall back to file modification time if no original timestamps available
+        if data_file_timestamp is None:
+            first_file = min(all_data_files, key=lambda f: f.stat().st_mtime)
+            data_file_timestamp = datetime.fromtimestamp(first_file.stat().st_mtime)
     
     # Process CSV files (output data)
     for csv_file in csv_files:
