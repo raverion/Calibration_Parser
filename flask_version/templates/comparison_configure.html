@@ -48,15 +48,26 @@
 
 <div class="config-section">
     <h2>🏷️ Equipment Identification</h2>
-    <p class="section-desc">Optionally enter the equipment model name to include in the report title and filename.</p>
+    <p class="section-desc">Enter the equipment model and type to include in the report title and filename.</p>
     
-    <div class="equipment-id-input">
-        <label for="equipment-model">Equipment Model:</label>
-        <input type="text" id="equipment-model" name="equipment_model" 
-               placeholder="e.g., VIO2004" 
-               pattern="[A-Za-z0-9\-_]+"
-               title="Alphanumeric characters, hyphens, and underscores only">
-        <span class="input-hint">This will appear in the report title (e.g., "VIO2004 50920 - Cross-Equipment Comparison Report")</span>
+    <div class="equipment-id-inputs">
+        <div class="equipment-id-input">
+            <label for="equipment-model">Equipment Model:</label>
+            <input type="text" id="equipment-model" name="equipment_model" 
+                   value="{{ default_model or '' }}"
+                   placeholder="e.g., VIO2004" 
+                   pattern="[A-Za-z0-9\-_]+"
+                   title="Alphanumeric characters, hyphens, and underscores only">
+        </div>
+        <div class="equipment-id-input">
+            <label for="equipment-type">Equipment Type:</label>
+            <input type="text" id="equipment-type" name="equipment_type" 
+                   value="{{ default_type or '' }}"
+                   placeholder="e.g., EQ-50920" 
+                   pattern="[A-Za-z0-9\-_]+"
+                   title="Alphanumeric characters, hyphens, and underscores only">
+        </div>
+        <span class="input-hint">Report will be named: <span id="report-name-preview">{{ default_model }}_{{ default_type }}</span></span>
     </div>
 </div>
 
@@ -148,6 +159,7 @@ function generateReport() {
     const ioType = document.querySelector('input[name="io_type"]:checked').value;
     const channels = document.querySelector('input[name="channels"]:checked').value;
     const equipmentModel = document.getElementById('equipment-model').value.trim();
+    const equipmentType = document.getElementById('equipment-type').value.trim();
     
     loadingOverlay.style.display = 'flex';
     
@@ -160,7 +172,8 @@ function generateReport() {
             group_by: groupBy,
             io_type: ioType,
             channels: channels,
-            equipment_model: equipmentModel
+            equipment_model: equipmentModel,
+            equipment_type: equipmentType
         })
     })
     .then(response => response.json())
@@ -179,6 +192,38 @@ function generateReport() {
         alert('Processing failed: ' + error.message);
     });
 }
+
+// Update report name preview when inputs change
+function updateReportNamePreview() {
+    const model = document.getElementById('equipment-model').value.trim();
+    const type = document.getElementById('equipment-type').value.trim();
+    const preview = document.getElementById('report-name-preview');
+    
+    let reportName = '';
+    if (model && type) {
+        reportName = `${model}_${type}`;
+    } else if (model) {
+        reportName = model;
+    } else if (type) {
+        reportName = type;
+    } else {
+        reportName = 'Comparison';
+    }
+    
+    preview.textContent = reportName;
+}
+
+// Initialize preview on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const modelInput = document.getElementById('equipment-model');
+    const typeInput = document.getElementById('equipment-type');
+    
+    modelInput.addEventListener('input', updateReportNamePreview);
+    typeInput.addEventListener('input', updateReportNamePreview);
+    
+    // Initialize preview
+    updateReportNamePreview();
+});
 </script>
 
 <style>

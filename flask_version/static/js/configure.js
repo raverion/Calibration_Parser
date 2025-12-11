@@ -2,6 +2,9 @@
 
 document.addEventListener('DOMContentLoaded', function() {
     const configFileInput = document.getElementById('config-file-input');
+    const equipmentModelInput = document.getElementById('equipment-model');
+    const equipmentNumberInput = document.getElementById('equipment-number');
+    const reportNamePreview = document.getElementById('report-name-preview');
     
     // Handle config file load
     configFileInput.addEventListener('change', function() {
@@ -9,6 +12,31 @@ document.addEventListener('DOMContentLoaded', function() {
             loadConfigFromFile(configFileInput.files[0]);
         }
     });
+    
+    // Update report name preview when inputs change
+    function updateReportNamePreview() {
+        const model = equipmentModelInput.value.trim();
+        const number = equipmentNumberInput.value.trim();
+        
+        let reportName = '';
+        if (model && number) {
+            reportName = `${model}_${number}`;
+        } else if (model) {
+            reportName = model;
+        } else if (number) {
+            reportName = number;
+        } else {
+            reportName = 'Equipment';
+        }
+        
+        reportNamePreview.textContent = reportName;
+    }
+    
+    equipmentModelInput.addEventListener('input', updateReportNamePreview);
+    equipmentNumberInput.addEventListener('input', updateReportNamePreview);
+    
+    // Initialize preview
+    updateReportNamePreview();
 });
 
 // Collect measurement type selections
@@ -65,6 +93,7 @@ function processFiles() {
     try {
         const measurementTypes = getMeasurementTypeSelections();
         const configs = getConfigurations();
+        const equipmentModel = document.getElementById('equipment-model').value.trim();
         const equipmentNumber = document.getElementById('equipment-number').value.trim();
         
         loadingOverlay.style.display = 'flex';
@@ -78,6 +107,7 @@ function processFiles() {
             body: JSON.stringify({
                 measurement_types: measurementTypes,
                 configs: configs,
+                equipment_model: equipmentModel,
                 equipment_number: equipmentNumber
             })
         })

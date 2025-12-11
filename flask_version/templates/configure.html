@@ -42,15 +42,25 @@
 
 <div class="config-section">
     <h2>🏷️ Equipment Identification</h2>
-    <p class="section-desc">Enter the equipment sample number to include in the report title and filename.</p>
+    <p class="section-desc">Enter the equipment model and sample number to include in the report title and filename.</p>
     
-    <div class="equipment-id-input">
-        <label for="equipment-number">Equipment Number:</label>
-        <input type="text" id="equipment-number" name="equipment_number" 
-               placeholder="e.g., 50920-001" 
-               pattern="[A-Za-z0-9\-_]+"
-               title="Alphanumeric characters, hyphens, and underscores only">
-        <span class="input-hint">This will appear in the report title and filename (e.g., "VIO2004_50920-001")</span>
+    <div class="equipment-id-inputs">
+        <div class="equipment-id-input">
+            <label for="equipment-model">Equipment Model:</label>
+            <input type="text" id="equipment-model" name="equipment_model" 
+                   value="{{ files_info.equipment_model or '' }}"
+                   placeholder="e.g., VIO2004" 
+                   pattern="[A-Za-z0-9\-_]+"
+                   title="Alphanumeric characters, hyphens, and underscores only">
+        </div>
+        <div class="equipment-id-input">
+            <label for="equipment-number">Equipment Number:</label>
+            <input type="text" id="equipment-number" name="equipment_number" 
+                   placeholder="e.g., EQ-50920-001" 
+                   pattern="[A-Za-z0-9\-_]+"
+                   title="Alphanumeric characters, hyphens, and underscores only">
+        </div>
+        <span class="input-hint">Report will be named: <span id="report-name-preview">{{ files_info.equipment_model or 'Equipment' }}</span></span>
     </div>
 </div>
 

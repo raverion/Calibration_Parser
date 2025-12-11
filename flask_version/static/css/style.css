@@ -565,9 +565,14 @@ body {
     font-size: 0.9rem;
 }
 
+.equipment-id-inputs {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
 .equipment-id-input {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     gap: 0.75rem;
 }
@@ -575,6 +580,7 @@ body {
 .equipment-id-input label {
     font-weight: 500;
     color: var(--gray-700);
+    min-width: 140px;
 }
 
 .equipment-id-input input {
@@ -591,11 +597,15 @@ body {
     box-shadow: 0 0 0 3px rgba(106, 27, 154, 0.1);
 }
 
-.equipment-id-input .input-hint {
-    font-size: 0.8rem;
+.equipment-id-inputs .input-hint {
+    font-size: 0.85rem;
     color: var(--gray-500);
-    width: 100%;
-    margin-top: 0.25rem;
+    margin-top: 0.5rem;
+}
+
+.equipment-id-inputs .input-hint #report-name-preview {
+    font-weight: 600;
+    color: var(--primary-color);
 }
 
 .config-actions {

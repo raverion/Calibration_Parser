@@ -107,6 +107,7 @@ def upload_comparison_files():
     uploaded_files = []
     validation_errors = []
     equipment_types = set()
+    equipment_models = set()
     test_configs_by_file = {}
     
     for file in files:
@@ -121,14 +122,19 @@ def upload_comparison_files():
             if validation_result['valid']:
                 uploaded_files.append({
                     'filename': filename,
+                    'equipment_model': validation_result['equipment_model'],
                     'equipment_type': validation_result['equipment_type'],
+                    'equipment_number': validation_result['equipment_number'],
                     'sample_id': validation_result['sample_id'],
                     'unit': validation_result['unit'],
                     'test_values': validation_result['test_values'],
                     'channels': validation_result['channels'],
                     'io_types': validation_result['io_types']
                 })
-                equipment_types.add(validation_result['equipment_type'])
+                if validation_result['equipment_type']:
+                    equipment_types.add(validation_result['equipment_type'])
+                if validation_result['equipment_model']:
+                    equipment_models.add(validation_result['equipment_model'])
                 test_configs_by_file[filename] = validation_result['test_values']
             else:
                 validation_errors.append({
@@ -144,12 +150,24 @@ def upload_comparison_files():
             'validation_errors': validation_errors
         }), 400
     
+    # Derive default equipment model and type for comparison report name
+    # e.g., if files are VIO2004_EQ-50920-001.xlsx ... VIO2004_EQ-50920-005.xlsx
+    # default_model = "VIO2004", default_type = "EQ-50920"
+    default_model = list(equipment_models)[0] if len(equipment_models) == 1 else ''
+    default_type = list(equipment_types)[0] if len(equipment_types) == 1 else ''
+    
     # Check for multiple equipment types
     warnings = []
     if len(equipment_types) > 1:
         warnings.append({
             'type': 'multiple_equipment_types',
             'message': f"Multiple equipment types detected: {', '.join(sorted(equipment_types))}. Please upload reports from the same equipment type only."
+        })
+    
+    if len(equipment_models) > 1:
+        warnings.append({
+            'type': 'multiple_equipment_models',
+            'message': f"Multiple equipment models detected: {', '.join(sorted(equipment_models))}. Please upload reports from the same equipment model only."
         })
     
     # Check for mismatched test values
@@ -176,12 +194,19 @@ def upload_comparison_files():
     session['comparison_files'] = uploaded_files
     session['comparison_warnings'] = warnings
     session['comparison_validation_errors'] = validation_errors
+    session['comparison_defaults'] = {
+        'equipment_model': default_model,
+        'equipment_type': default_type
+    }
     
     return jsonify({
         'success': True,
         'files_count': len(uploaded_files),
         'files': uploaded_files,
         'equipment_types': list(equipment_types),
+        'equipment_models': list(equipment_models),
+        'default_model': default_model,
+        'default_type': default_type,
         'warnings': warnings,
         'validation_errors': validation_errors
     })
@@ -194,8 +219,10 @@ def validate_equipment_report(file_path):
     Returns dict with:
     - valid: bool
     - error: str (if not valid)
-    - equipment_type: str (e.g., '50910')
-    - sample_id: str (e.g., '50910-001')
+    - equipment_model: str (e.g., 'VIO2004')
+    - equipment_type: str (e.g., '50920')  
+    - equipment_number: str (e.g., 'EQ-50920-001')
+    - sample_id: str (full filename stem)
     - unit: str
     - test_values: list of test values
     - channels: list of channel numbers
@@ -237,16 +264,33 @@ def validate_equipment_report(file_path):
         if missing_columns:
             return {'valid': False, 'error': f'Missing required columns: {", ".join(missing_columns)}'}
         
-        # Extract equipment type and sample ID from filename
+        # Extract equipment model, type, and number from filename
+        # Expected format: VIO2004_EQ-50920-001.xlsx or legacy format like 50920-001.xlsx
         filename = Path(file_path).stem
-        # Try to parse equipment type (e.g., "50910" from "50910-001")
-        parts = filename.split('-')
-        if len(parts) >= 2:
-            equipment_type = parts[0]
-            sample_id = filename
+        
+        equipment_model = None
+        equipment_type = None
+        equipment_number = None
+        sample_id = filename
+        
+        # Check for new format: Model_Number (e.g., VIO2004_EQ-50920-001)
+        if '_' in filename:
+            parts = filename.split('_', 1)
+            equipment_model = parts[0]  # e.g., "VIO2004"
+            if len(parts) > 1:
+                equipment_number = parts[1]  # e.g., "EQ-50920-001"
+                # Extract equipment type from number (first part before last hyphen-digit)
+                # e.g., "EQ-50920-001" -> "EQ-50920" or "50920-001" -> "50920"
+                number_parts = equipment_number.rsplit('-', 1)
+                if len(number_parts) >= 1:
+                    equipment_type = number_parts[0]  # e.g., "EQ-50920"
         else:
-            equipment_type = filename
-            sample_id = filename
+            # Legacy format: just the number (e.g., 50920-001)
+            equipment_number = filename
+            # Try to extract equipment type
+            parts = filename.rsplit('-', 1)
+            if len(parts) >= 1:
+                equipment_type = parts[0]  # e.g., "50920"
         
         # Extract test values, channels, and I/O types
         test_values = df[f'Test Value [{unit}]'].unique().tolist()
@@ -255,7 +299,9 @@ def validate_equipment_report(file_path):
         
         return {
             'valid': True,
+            'equipment_model': equipment_model,
             'equipment_type': equipment_type,
+            'equipment_number': equipment_number,
             'sample_id': sample_id,
             'unit': unit,
             'test_values': test_values,
@@ -273,10 +319,14 @@ def comparison_configure():
     if 'comparison_files' not in session:
         return redirect(url_for('comparison_report'))
     
+    defaults = session.get('comparison_defaults', {})
+    
     return render_template('comparison_configure.html',
                           files=session.get('comparison_files', []),
                           warnings=session.get('comparison_warnings', []),
-                          validation_errors=session.get('comparison_validation_errors', []))
+                          validation_errors=session.get('comparison_validation_errors', []),
+                          default_model=defaults.get('equipment_model', ''),
+                          default_type=defaults.get('equipment_type', ''))
 
 
 @app.route('/api/process-comparison', methods=['POST'])
@@ -290,6 +340,7 @@ def process_comparison():
     selected_io_type = data.get('io_type', 'all')  # 'all', 'Input', or 'Output'
     group_by = data.get('group_by', 'sample')  # 'sample' or 'channel'
     equipment_model = data.get('equipment_model', '')  # e.g., "VIO2004"
+    equipment_type = data.get('equipment_type', '')  # e.g., "EQ-50920"
     
     session_folder = get_session_folder()
     comparison_folder = session_folder / 'comparison'
@@ -299,25 +350,26 @@ def process_comparison():
         # Load all Excel files and combine data
         all_data = []
         unit = None
-        equipment_type = None
+        
+        # Use user-provided equipment type or get from first file
+        if not equipment_type:
+            first_file = session['comparison_files'][0]
+            equipment_type = first_file.get('equipment_type', '')
         
         for file_info in session['comparison_files']:
             file_path = comparison_folder / file_info['filename']
             df = pd.read_excel(file_path, sheet_name='Test Results')
             
-            # Get unit and equipment type from first file
+            # Get unit from first file
             if unit is None:
                 for col in df.columns:
                     if 'Test Value [' in col:
                         unit = col.split('[')[1].split(']')[0]
                         break
             
-            if equipment_type is None:
-                equipment_type = file_info['equipment_type']
-            
             # Add sample ID column
             df['Sample ID'] = file_info['sample_id']
-            df['Equipment Type'] = file_info['equipment_type']
+            df['Equipment Type'] = file_info.get('equipment_type', '')
             
             all_data.append(df)
         
@@ -337,11 +389,15 @@ def process_comparison():
         combined_df['Error+2σ'] = (combined_df[f'Mean [{unit}]'] + 2*combined_df[f'StdDev [{unit}]']) - combined_df[f'Reference Value [{unit}]']
         
         # Build full equipment identifier
-        # e.g., "VIO2004_50920" if model provided, else just "50920"
-        if equipment_model:
+        # e.g., "VIO2004_EQ-50920" if both provided
+        if equipment_model and equipment_type:
             full_equipment_name = f"{equipment_model}_{equipment_type}"
-        else:
+        elif equipment_model:
+            full_equipment_name = equipment_model
+        elif equipment_type:
             full_equipment_name = equipment_type
+        else:
+            full_equipment_name = 'Comparison'
         
         # Generate comparison report
         html_file = create_comparison_html_report(
@@ -1014,6 +1070,9 @@ def upload_files():
     if not uploaded_files:
         return jsonify({'error': 'No valid CSV or TXT files found'}), 400
     
+    # Extract equipment model from first filename
+    equipment_model = extract_equipment_name(uploaded_files[0]) if uploaded_files else ''
+    
     # Detect unit from files
     unit = get_unit_from_files(str(session_folder))
     
@@ -1035,7 +1094,8 @@ def upload_files():
         'csv_count': csv_count,
         'txt_count': txt_count,
         'unit': unit,
-        'filenames': uploaded_files
+        'filenames': uploaded_files,
+        'equipment_model': equipment_model
     }
     session['measurement_types'] = file_measurement_types
     session['test_configs'] = test_configs
@@ -1047,7 +1107,8 @@ def upload_files():
         'txt_count': txt_count,
         'unit': unit,
         'measurement_types': file_measurement_types,
-        'test_configs': test_configs
+        'test_configs': test_configs,
+        'equipment_model': equipment_model
     })
 
 
@@ -1116,7 +1177,8 @@ def process_files():
     data = request.json
     measurement_type_selections = data.get('measurement_types', {})
     user_configs = data.get('configs', [])
-    equipment_number = data.get('equipment_number', '')  # e.g., "50920-001"
+    equipment_model = data.get('equipment_model', '')  # e.g., "VIO2004"
+    equipment_number = data.get('equipment_number', '')  # e.g., "EQ-50920-001"
     
     session_folder = get_session_folder()
     output_folder = get_output_folder()
@@ -1152,6 +1214,7 @@ def process_files():
             user_inputs=user_inputs,
             unit=unit,
             measurement_type_selections=full_path_selections,
+            equipment_model=equipment_model,
             equipment_number=equipment_number
         )
         
@@ -1173,7 +1236,7 @@ def process_files():
         return jsonify({'error': str(e), 'traceback': traceback.format_exc()}), 500
 
 
-def process_measurement_files(input_dir, output_dir, user_inputs, unit, measurement_type_selections=None, equipment_number=None):
+def process_measurement_files(input_dir, output_dir, user_inputs, unit, measurement_type_selections=None, equipment_model=None, equipment_number=None):
     """
     Process all CSV and TXT files in the input directory and compile results into Excel.
     Modified version of the original process_files function to support web output.
@@ -1192,19 +1255,22 @@ def process_measurement_files(input_dir, output_dir, user_inputs, unit, measurem
     if total_files == 0:
         raise ValueError(f"No CSV or TXT files found in {input_dir}")
     
-    # Extract equipment model from the first file (e.g., "VIO2004")
+    # Use user-provided model or extract from first file
     all_data_files = csv_files + txt_files
-    equipment_model = None
-    if all_data_files:
+    if not equipment_model and all_data_files:
         first_file = all_data_files[0]
         equipment_model = extract_equipment_name(first_file.name)
     
     # Combine model and number for full equipment name
-    # e.g., "VIO2004_50920-001" or just "VIO2004" if no number provided
-    if equipment_number:
-        equipment_name = f"{equipment_model}_{equipment_number}" if equipment_model else equipment_number
+    # e.g., "VIO2004_EQ-50920-001" or just "VIO2004" if no number provided
+    if equipment_model and equipment_number:
+        equipment_name = f"{equipment_model}_{equipment_number}"
+    elif equipment_model:
+        equipment_name = equipment_model
+    elif equipment_number:
+        equipment_name = equipment_number
     else:
-        equipment_name = equipment_model if equipment_model else dir_name
+        equipment_name = dir_name
     
     # Use equipment name for output filename
     output_base_name = equipment_name
